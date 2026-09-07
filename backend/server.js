@@ -11,7 +11,7 @@ const server = http.createServer(app);
 // Initialize Socket.io to talk to our React app
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173", // The default port for Vite/React
+    origin: "*", // CHANGED: Allows connections from your live Vercel frontend
     methods: ["GET", "POST"]
   }
 });
@@ -39,6 +39,8 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(3001, () => {
-  console.log('Backend Server is running on http://localhost:3001');
+// CHANGED: Use the cloud provider's assigned port, or default to 3001 locally
+const PORT = process.env.PORT || 3001;
+server.listen(PORT, () => {
+  console.log(`Backend Server is running on port ${PORT}`);
 });
