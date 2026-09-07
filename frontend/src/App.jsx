@@ -15,7 +15,7 @@ const DefaultIcon = L.icon({
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-const socket = io("http://localhost:3001");
+const socket = io("https://crisis-app-67f7.onrender.com");
 
 // 1. Initialize the audio file from the public folder
 const alarmSound = new Audio('/alarm.mp3');
