@@ -17,7 +17,6 @@ L.Marker.prototype.options.icon = DefaultIcon;
 
 const socket = io("https://crisis-app-67f7.onrender.com");
 
-// 1. Initialize the audio file from the public folder
 const alarmSound = new Audio('/alarm.mp3');
 
 function DynamicMapUpdater({ centerLocation }) {
@@ -34,6 +33,14 @@ export default function App() {
   const [pins, setPins] = useState({});
   const [mapFocus, setMapFocus] = useState(null); 
 
+  // FIXED: Helper function to rewind audio before playing
+  const triggerAlarm = () => {
+    alarmSound.currentTime = 0; // Rewinds to 0 seconds
+    alarmSound.play().catch((err) => {
+      console.warn("Browser blocked the alarm sound. The user needs to click anywhere on the page first.", err);
+    });
+  };
+
   useEffect(() => {
     socket.on('initial_pins', (data) => setPins(data));
     
@@ -45,11 +52,8 @@ export default function App() {
         style: { fontWeight: 'bold', fontSize: '16px' }
       });
       
-      // 2. Play the sound. The .catch() prevents the app from crashing 
-      // if the browser blocks it due to the Autoplay Policy.
-      alarmSound.play().catch((err) => {
-        console.warn("Browser blocked the alarm sound. The user needs to click anywhere on the page first.", err);
-      });
+      // FIXED: Use triggerAlarm instead of alarmSound.play()
+      triggerAlarm();
       
       setMapFocus([newPin.lat, newPin.lng]);
     });
@@ -83,6 +87,11 @@ export default function App() {
         
         setPins((prev) => ({ ...prev, [newSignal.id]: newSignal }));
         socket.emit('need_help', newSignal);
+
+        // FIXED: Play sound and show a success toast for the person who clicked SOS
+        triggerAlarm();
+        toast.success("SOS Broadcasted Successfully!");
+
       }, (error) => {
         toast.error("Please allow location access to request help.");
       });
@@ -91,9 +100,9 @@ export default function App() {
     }
   };
 
-  // 3. Optional feature: A function to let volunteers test the alarm volume
   const testAlarm = () => {
-    alarmSound.play();
+    // FIXED: Use triggerAlarm instead of alarmSound.play()
+    triggerAlarm();
     toast("Testing alarm volume...");
   };
 
@@ -110,7 +119,6 @@ export default function App() {
         </button>
         <p style={{ color: 'white', margin: '10px 0 0 0' }}>It will grab your exact GPS location.</p>
         
-        {/* Added a small button to test the audio and satisfy the browser's interaction rule */}
         <button 
           onClick={testAlarm} 
           style={{ position: 'absolute', right: '20px', top: '20px', padding: '8px 12px', background: '#34495e', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
