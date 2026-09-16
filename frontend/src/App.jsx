@@ -32,16 +32,22 @@ function DynamicMapUpdater({ centerLocation }) {
 export default function App() {
   const [pins, setPins] = useState({});
   const [mapFocus, setMapFocus] = useState(null); 
+  
+  // NEW: State to track if the Render server is awake and connected
+  const [isConnected, setIsConnected] = useState(false);
 
-  // FIXED: Helper function to rewind audio before playing
   const triggerAlarm = () => {
-    alarmSound.currentTime = 0; // Rewinds to 0 seconds
+    alarmSound.currentTime = 0; 
     alarmSound.play().catch((err) => {
-      console.warn("Browser blocked the alarm sound. The user needs to click anywhere on the page first.", err);
+      console.warn("Browser blocked the alarm sound.", err);
     });
   };
 
   useEffect(() => {
+    // Listen for connection status
+    socket.on('connect', () => setIsConnected(true));
+    socket.on('disconnect', () => setIsConnected(false));
+
     socket.on('initial_pins', (data) => setPins(data));
     
     socket.on('new_pin', (newPin) => {
@@ -52,9 +58,7 @@ export default function App() {
         style: { fontWeight: 'bold', fontSize: '16px' }
       });
       
-      // FIXED: Use triggerAlarm instead of alarmSound.play()
-      triggerAlarm();
-      
+      triggerAlarm(); // Plays for the volunteer
       setMapFocus([newPin.lat, newPin.lng]);
     });
     
@@ -66,6 +70,8 @@ export default function App() {
     });
 
     return () => {
+      socket.off('connect');
+      socket.off('disconnect');
       socket.off('initial_pins');
       socket.off('new_pin');
       socket.off('pin_updated');
@@ -88,8 +94,7 @@ export default function App() {
         setPins((prev) => ({ ...prev, [newSignal.id]: newSignal }));
         socket.emit('need_help', newSignal);
 
-        // FIXED: Play sound and show a success toast for the person who clicked SOS
-        triggerAlarm();
+        // Victim only sees the toast, hears no sound
         toast.success("SOS Broadcasted Successfully!");
 
       }, (error) => {
@@ -101,7 +106,6 @@ export default function App() {
   };
 
   const testAlarm = () => {
-    // FIXED: Use triggerAlarm instead of alarmSound.play()
     triggerAlarm();
     toast("Testing alarm volume...");
   };
@@ -112,6 +116,12 @@ export default function App() {
       <Toaster position="top-right" reverseOrder={false} />
 
       <div style={{ padding: '20px', background: '#2c3e50', textAlign: 'center', position: 'relative' }}>
+        
+        {/* NEW: Visual indicator for Render's sleep mode */}
+        <div style={{ position: 'absolute', left: '20px', top: '20px', color: isConnected ? '#2ecc71' : '#e74c3c', fontWeight: 'bold', fontSize: '14px' }}>
+          {isConnected ? '🟢 Server Online' : '🔴 Server Sleeping (Wait...)'}
+        </div>
+
         <button 
           onClick={requestHelp} 
           style={{ padding: '15px 30px', fontSize: '18px', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
