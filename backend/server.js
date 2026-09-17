@@ -1,46 +1,85 @@
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
 const { Server } = require('socket.io');
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 
 const app = express();
 app.use(cors());
+app.use(express.json()); // CRITICAL: Allows Express to read JSON body data
 
-const server = http.createServer(app);
+// --- DATABASE SETUP ---
+// In production, this uses the Render environment variable. Locally, it uses a .env file.
+const MONGO_URI = process.env.MONGO_URI; 
 
-// Initialize Socket.io to talk to our React app
-const io = new Server(server, {
-  cors: {
-    origin: "*", // CHANGED: Allows connections from your live Vercel frontend
-    methods: ["GET", "POST"]
+mongoose.connect(MONGO_URI)
+  .then(() => console.log("✅ MongoDB Connected"))
+  .catch(err => console.log("❌ MongoDB Error:", err));
+
+const UserSchema = new mongoose.Schema({
+  name: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  role: { type: String, required: true }
+});
+const User = mongoose.model('User', UserSchema);
+
+// --- REST APIs FOR AUTH ---
+app.post('/signup', async (req, res) => {
+  try {
+    const { name, password, role } = req.body;
+    const existingUser = await User.findOne({ name });
+    if (existingUser) return res.status(400).json({ error: "Username already taken" });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = new User({ name, password: hashedPassword, role });
+    await newUser.save();
+
+    res.json({ name: newUser.name, role: newUser.role });
+  } catch (err) {
+    res.status(500).json({ error: "Server error during signup" });
   }
 });
 
-let activePins = {}; // Temporary database
+app.post('/login', async (req, res) => {
+  try {
+    const { name, password, role } = req.body;
+    const user = await User.findOne({ name, role });
+    if (!user) return res.status(400).json({ error: "User not found or role mismatch" });
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) return res.status(400).json({ error: "Invalid password" });
+
+    res.json({ name: user.name, role: user.role });
+  } catch (err) {
+    res.status(500).json({ error: "Server error during login" });
+  }
+});
+
+app.get('/', (req, res) => res.send("Rescue Backend is LIVE with DB Auth!"));
+
+// --- WEBSOCKETS ---
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
+let activePins = {}; 
 
 io.on('connection', (socket) => {
-  console.log(`User Connected: ${socket.id}`);
-  
-  // Send existing pins to newly connected users
   socket.emit('initial_pins', activePins);
 
-  // Listen for someone pressing "Need Help"
   socket.on('need_help', (data) => {
     activePins[data.id] = data;
-    socket.broadcast.emit('new_pin', data); // Broadcast to everyone else
+    socket.broadcast.emit('new_pin', data); 
   });
 
-  // Listen for a volunteer claiming a pin
-  socket.on('claim_rescue', (id) => {
-    if(activePins[id]) {
-      activePins[id].status = 'claimed';
-      io.emit('pin_updated', activePins[id]); // Update everyone
+  socket.on('claim_rescue', (data) => {
+    if(activePins[data.id]) {
+      activePins[data.id].status = 'claimed';
+      activePins[data.id].rescuerName = data.volunteerName;
+      io.emit('pin_updated', activePins[data.id]); 
     }
   });
 });
 
-// CHANGED: Use the cloud provider's assigned port, or default to 3001 locally
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-  console.log(`Backend Server is running on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`Backend Server running on port ${PORT}`));
